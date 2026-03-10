@@ -55,4 +55,15 @@ final class KernelTests {
 
         #expect(commandLine.kernelArgs == ["console=hvc0", "debug", "panic=10"])
     }
+
+    @Test func kernelCommandLineSupportsEROFSInitfs() {
+        let commandLine = Kernel.CommandLine(debug: false, panic: 0)
+        let kernel = Kernel(path: .init(fileURLWithPath: ""), platform: .linuxArm, commandline: commandLine)
+        let initfs = Mount.block(format: "erofs", source: "/tmp/init.erofs", destination: "/", options: ["ro"])
+
+        let expected = "console=hvc0 tsc=reliable panic=0 init=/sbin/vminitd ro rootfstype=erofs root=/dev/vda"
+        let cmdline = kernel.linuxCommandline(initialFilesystem: initfs)
+
+        #expect(cmdline == expected)
+    }
 }
