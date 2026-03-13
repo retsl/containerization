@@ -449,6 +449,11 @@ extension Kernel {
                 "rootfstype=ext4",
                 "root=/dev/vda",
             ])
+        case "erofs":
+            args.append(contentsOf: [
+                "rootfstype=erofs",
+                "root=/dev/vda",
+            ])
         default:
             fatalError("unsupported initfs filesystem \(initialFilesystem.type)")
         }
