@@ -18,6 +18,12 @@ import ContainerizationError
 import Foundation
 import Virtualization
 
+// VZMultipleDirectoryShare is an ObjC class used only by value (VZ copies the
+// directories dictionary on assignment to VZVirtioFileSystemDevice.share).
+// Declaring it @unchecked Sendable is safe and required to pass instances
+// across actor isolation boundaries.
+extension VZMultipleDirectoryShare: @unchecked Sendable {}
+
 /// The runtime state of the virtual machine instance.
 public enum VirtualMachineInstanceState: Sendable {
     case starting
