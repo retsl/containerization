@@ -29,6 +29,7 @@ public struct VZVirtualMachineManager: VirtualMachineManager {
     private let nestedVirtualization: Bool
     private let group: EventLoopGroup?
     private let logger: Logger?
+    private let hotMountTag: String?
 
     public init(
         kernel: Kernel,
@@ -36,7 +37,8 @@ public struct VZVirtualMachineManager: VirtualMachineManager {
         rosetta: Bool = false,
         nestedVirtualization: Bool = false,
         group: EventLoopGroup? = nil,
-        logger: Logger? = nil
+        logger: Logger? = nil,
+        hotMountTag: String? = nil
     ) {
         self.kernel = kernel
         self.initialFilesystem = initialFilesystem
@@ -44,6 +46,7 @@ public struct VZVirtualMachineManager: VirtualMachineManager {
         self.nestedVirtualization = nestedVirtualization
         self.group = group
         self.logger = logger
+        self.hotMountTag = hotMountTag
     }
 
     public func create(config: some VMCreationConfig) throws -> any VirtualMachineInstance {
@@ -71,6 +74,7 @@ public struct VZVirtualMachineManager: VirtualMachineManager {
                 instanceConfig.nestedVirtualization = useNestedVirtualization
 
                 instanceConfig.mountsByID = vmConfig.mountsByID
+                instanceConfig.hotMountTag = self.hotMountTag
             })
     }
 }

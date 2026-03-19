@@ -16,6 +16,7 @@
 
 import ContainerizationError
 import Foundation
+import Virtualization
 
 /// The runtime state of the virtual machine instance.
 public enum VirtualMachineInstanceState: Sendable {
@@ -49,9 +50,15 @@ public protocol VirtualMachineInstance: Sendable {
     func pause() async throws
     /// Resume the virtual machine.
     func resume() async throws
+    /// Replace the virtiofs share on the hot-mount bus device.
+    /// All VZ object access must go through the VM's internal dispatch queue;
+    /// implementors are responsible for dispatching correctly.
+    /// No-op when this VM was not configured with a hot-mount bus tag.
+    func setHotMountShare(_ share: VZMultipleDirectoryShare)
 }
 
 extension VirtualMachineInstance {
+    public func setHotMountShare(_ share: VZMultipleDirectoryShare) {}
     func pause() async throws {
         throw ContainerizationError(.unsupported, message: "pause")
     }

@@ -57,6 +57,10 @@ struct VZVirtualMachineInstance: Sendable {
         public var initialFilesystem: Mount?
         /// Destination for the virtual machine's boot logs.
         public var bootLog: BootLog?
+        /// When non-nil, attaches a VZMultipleDirectoryShare device with this virtiofs
+        /// tag to the VM.  The share starts empty; callers mutate it at runtime to
+        /// add or remove host directories without stopping the VM.
+        public var hotMountTag: String? = nil
 
         init() {
             self.cpus = 4
@@ -68,8 +72,12 @@ struct VZVirtualMachineInstance: Sendable {
         }
     }
 
-    // `vm` isn't used concurrently.
+    // `vm` and `hotMountDevice` aren't used concurrently.
     private nonisolated(unsafe) let vm: VZVirtualMachine
+    /// The runtime VZVirtioFileSystemDevice for the hot-mount bus tag, or nil
+    /// if no hot-mount tag was configured.  Mutate via setHotMountShare(_:) —
+    /// VZ requires all device access to go through the VM's dispatch queue.
+    private nonisolated(unsafe) let hotMountDevice: VZVirtioFileSystemDevice?
     private let queue: DispatchQueue
     private let lock: AsyncLock
     private let group: EventLoopGroup
@@ -103,14 +111,39 @@ struct VZVirtualMachineInstance: Sendable {
         self.logger = logger
         self.timeSyncer = .init(logger: logger)
 
-        self.vm = VZVirtualMachine(
-            configuration: try config.toVZ(),
-            queue: self.queue
-        )
+        let vzConfig = try config.toVZ()
+        if let tag = config.hotMountTag {
+            // Start with an empty share; callers hot-add content by assigning a new
+            // VZMultipleDirectoryShare to the runtime VZVirtioFileSystemDevice.share.
+            let share = VZMultipleDirectoryShare(directories: [:])
+            let device = VZVirtioFileSystemDeviceConfiguration(tag: tag)
+            device.share = share
+            vzConfig.directorySharingDevices.append(device)
+        }
+        let queue = self.queue
+        self.vm = VZVirtualMachine(configuration: vzConfig, queue: queue)
+        if let tag = config.hotMountTag {
+            // VZVirtioFileSystemDevice.tag calls dispatch_assert_queue internally,
+            // so we must access it on the VM's dispatch queue.
+            let vm = self.vm
+            self.hotMountDevice = queue.sync {
+                vm.directorySharingDevices
+                    .compactMap { $0 as? VZVirtioFileSystemDevice }
+                    .first(where: { $0.tag == tag })
+            }
+        } else {
+            self.hotMountDevice = nil
+        }
     }
 }
 
 extension VZVirtualMachineInstance: VirtualMachineInstance {
+    func setHotMountShare(_ share: VZMultipleDirectoryShare) {
+        guard let device = hotMountDevice else { return }
+        // VZ requires all device access on the VM's dispatch queue.
+        queue.sync { device.share = share }
+    }
+
     func start() async throws {
         try await lock.withLock { _ in
             guard self.state == .stopped else {
