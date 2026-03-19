@@ -113,12 +113,21 @@ struct VZVirtualMachineInstance: Sendable {
 
         let vzConfig = try config.toVZ()
         if let tag = config.hotMountTag {
+            // Guard against tag collisions with mounts already in the config.
+            let existingTags = vzConfig.directorySharingDevices
+                .compactMap { $0 as? VZVirtioFileSystemDeviceConfiguration }
+                .map { $0.tag }
+            precondition(
+                !existingTags.contains(tag),
+                "hotMountTag '\(tag)' conflicts with an existing directory-sharing device"
+            )
             // Start with an empty share; callers hot-add content by assigning a new
             // VZMultipleDirectoryShare to the runtime VZVirtioFileSystemDevice.share.
-            let share = VZMultipleDirectoryShare(directories: [:])
             let device = VZVirtioFileSystemDeviceConfiguration(tag: tag)
-            device.share = share
+            device.share = VZMultipleDirectoryShare(directories: [:])
             vzConfig.directorySharingDevices.append(device)
+            // Re-validate: toVZ() validates before the hot-mount device is appended.
+            try vzConfig.validate()
         }
         let queue = self.queue
         self.vm = VZVirtualMachine(configuration: vzConfig, queue: queue)
@@ -126,11 +135,16 @@ struct VZVirtualMachineInstance: Sendable {
             // VZVirtioFileSystemDevice.tag calls dispatch_assert_queue internally,
             // so we must access it on the VM's dispatch queue.
             let vm = self.vm
-            self.hotMountDevice = queue.sync {
+            let found = queue.sync {
                 vm.directorySharingDevices
                     .compactMap { $0 as? VZVirtioFileSystemDevice }
                     .first(where: { $0.tag == tag })
             }
+            assert(
+                found != nil,
+                "hot-mount device '\(tag)' not found after VM init — VZ silently rejected the configuration"
+            )
+            self.hotMountDevice = found
         } else {
             self.hotMountDevice = nil
         }
@@ -138,10 +152,16 @@ struct VZVirtualMachineInstance: Sendable {
 }
 
 extension VZVirtualMachineInstance: VirtualMachineInstance {
-    func setHotMountShare(_ share: VZMultipleDirectoryShare) {
+    func setHotMountShare(_ share: VZMultipleDirectoryShare) async {
         guard let device = hotMountDevice else { return }
         // VZ requires all device access on the VM's dispatch queue.
-        queue.sync { device.share = share }
+        // Use queue.async + continuation to avoid blocking a cooperative thread.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                device.share = share
+                continuation.resume()
+            }
+        }
     }
 
     func start() async throws {

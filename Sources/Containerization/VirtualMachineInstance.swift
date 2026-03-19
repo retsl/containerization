@@ -54,11 +54,11 @@ public protocol VirtualMachineInstance: Sendable {
     /// All VZ object access must go through the VM's internal dispatch queue;
     /// implementors are responsible for dispatching correctly.
     /// No-op when this VM was not configured with a hot-mount bus tag.
-    func setHotMountShare(_ share: VZMultipleDirectoryShare)
+    func setHotMountShare(_ share: VZMultipleDirectoryShare) async
 }
 
 extension VirtualMachineInstance {
-    public func setHotMountShare(_ share: VZMultipleDirectoryShare) {}
+    public func setHotMountShare(_ share: VZMultipleDirectoryShare) async {}
     func pause() async throws {
         throw ContainerizationError(.unsupported, message: "pause")
     }
