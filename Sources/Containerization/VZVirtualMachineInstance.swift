@@ -154,10 +154,13 @@ struct VZVirtualMachineInstance: Sendable {
 extension VZVirtualMachineInstance: VirtualMachineInstance {
     func saveMachineState(to url: URL) async throws {
         try await lock.withLock { _ in
-            guard self.state == .running else {
+            // VZ requires the VM to be paused before saving. After the save
+            // completes, VZ transitions the VM to .stopped automatically.
+            let vzState = self.queue.sync { self.vm.state }
+            guard vzState == .paused else {
                 throw ContainerizationError(
                     .invalidState,
-                    message: "vm must be running to save machine state"
+                    message: "vm must be paused to save machine state (got \(vzState))"
                 )
             }
             try await self.vm.saveMachineState(queue: self.queue, to: url)
