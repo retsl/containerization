@@ -152,6 +152,30 @@ struct VZVirtualMachineInstance: Sendable {
 }
 
 extension VZVirtualMachineInstance: VirtualMachineInstance {
+    func saveMachineState(to url: URL) async throws {
+        try await lock.withLock { _ in
+            guard self.state == .running else {
+                throw ContainerizationError(
+                    .invalidState,
+                    message: "vm must be running to save machine state"
+                )
+            }
+            try await self.vm.saveMachineState(queue: self.queue, to: url)
+        }
+    }
+
+    func restoreMachineState(from url: URL) async throws {
+        try await lock.withLock { _ in
+            guard self.state == .stopped else {
+                throw ContainerizationError(
+                    .invalidState,
+                    message: "vm must be stopped to restore machine state"
+                )
+            }
+            try await self.vm.restoreMachineState(queue: self.queue, from: url)
+        }
+    }
+
     func setHotMountShare(_ share: VZMultipleDirectoryShare) async {
         guard let device = hotMountDevice else { return }
         // VZ requires all device access on the VM's dispatch queue.

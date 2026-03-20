@@ -56,6 +56,16 @@ public protocol VirtualMachineInstance: Sendable {
     func pause() async throws
     /// Resume the virtual machine.
     func resume() async throws
+    /// Save the VM machine state to `url`.
+    ///
+    /// Implementations must provide a durable save compatible with the
+    /// corresponding `restoreMachineState(from:)` operation.
+    func saveMachineState(to url: URL) async throws
+    /// Restore VM machine state from `url`.
+    ///
+    /// Implementations should treat this as replacing in-memory state for the
+    /// current instance rather than booting a fresh VM.
+    func restoreMachineState(from url: URL) async throws
     /// Replace the virtiofs share on the hot-mount bus device.
     /// All VZ object access must go through the VM's internal dispatch queue;
     /// implementors are responsible for dispatching correctly.
@@ -70,5 +80,11 @@ extension VirtualMachineInstance {
     }
     func resume() async throws {
         throw ContainerizationError(.unsupported, message: "resume")
+    }
+    public func saveMachineState(to url: URL) async throws {
+        throw ContainerizationError(.unsupported, message: "saveMachineState")
+    }
+    public func restoreMachineState(from url: URL) async throws {
+        throw ContainerizationError(.unsupported, message: "restoreMachineState")
     }
 }
