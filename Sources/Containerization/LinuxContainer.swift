@@ -71,6 +71,10 @@ public final class LinuxContainer: Container, Sendable {
         public var virtualization: Bool = false
         /// Optional destination for serial boot logs.
         public var bootLog: BootLog?
+        /// When true, attaches Virtio GPU, USB input devices, audio, and SPICE clipboard.
+        public var gui: Bool = false
+        /// Display resolution for GUI mode. Ignored when `gui` is false.
+        public var guiResolution: GUIResolution = GUIResolution()
         /// EXPERIMENTAL: Path in the root filesystem for the virtual
         /// machine where the OCI runtime used to spawn the container lives.
         public var ociRuntimePath: String?
@@ -93,6 +97,8 @@ public final class LinuxContainer: Container, Sendable {
             hosts: Hosts? = nil,
             virtualization: Bool = false,
             bootLog: BootLog? = nil,
+            gui: Bool = false,
+            guiResolution: GUIResolution = GUIResolution(),
             ociRuntimePath: String? = nil,
             useInit: Bool = false
         ) {
@@ -108,6 +114,8 @@ public final class LinuxContainer: Container, Sendable {
             self.hosts = hosts
             self.virtualization = virtualization
             self.bootLog = bootLog
+            self.gui = gui
+            self.guiResolution = guiResolution
             self.ociRuntimePath = ociRuntimePath
             self.useInit = useInit
         }
@@ -434,6 +442,16 @@ extension LinuxContainer {
         config.interfaces
     }
 
+    /// Whether GUI mode (Virtio GPU + input devices + audio) is enabled.
+    public var gui: Bool {
+        config.gui
+    }
+
+    /// Display resolution for GUI mode.
+    public var guiResolution: GUIResolution {
+        config.guiResolution
+    }
+
     private func mountRootfs(
         attachments: [AttachedFilesystem],
         rootfsPath: String,
@@ -542,7 +560,9 @@ extension LinuxContainer {
                 interfaces: self.interfaces,
                 mountsByID: [self.id: containerMounts],
                 bootLog: self.config.bootLog,
-                nestedVirtualization: self.config.virtualization
+                nestedVirtualization: self.config.virtualization,
+                gui: self.gui,
+                guiResolution: self.guiResolution
             )
             let creationConfig = StandardVMConfig(configuration: vmConfig)
             let vm = try await self.vmm.create(config: creationConfig)
