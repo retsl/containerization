@@ -61,6 +61,11 @@ struct VZVirtualMachineInstance: Sendable {
         /// tag to the VM.  The share starts empty; callers mutate it at runtime to
         /// add or remove host directories without stopping the VM.
         public var hotMountTag: String? = nil
+        /// When true, attaches a Virtio GPU, USB keyboard, USB pointing device, audio
+        /// I/O devices, and a SPICE clipboard console to the VM.
+        public var gui: Bool
+        /// Display resolution for the Virtio GPU scanout.  Only used when `gui` is true.
+        public var guiResolution: GUIResolution
 
         init() {
             self.cpus = 4
@@ -69,6 +74,8 @@ struct VZVirtualMachineInstance: Sendable {
             self.nestedVirtualization = false
             self.mountsByID = [:]
             self.interfaces = []
+            self.gui = false
+            self.guiResolution = GUIResolution()
         }
     }
 
@@ -483,6 +490,39 @@ extension VZVirtualMachineInstance.Configuration {
         }
         platform.isNestedVirtualizationEnabled = self.nestedVirtualization
         config.platform = platform
+
+        if self.gui {
+            let graphics = VZVirtioGraphicsDeviceConfiguration()
+            graphics.scanouts = [
+                VZVirtioGraphicsScanoutConfiguration(
+                    widthInPixels: self.guiResolution.width,
+                    heightInPixels: self.guiResolution.height
+                ),
+            ]
+            config.graphicsDevices = [graphics]
+
+            config.keyboards = [VZUSBKeyboardConfiguration()]
+            config.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
+
+            let inputAudioDevice = VZVirtioSoundDeviceConfiguration()
+            let inputStream = VZVirtioSoundDeviceInputStreamConfiguration()
+            inputStream.source = VZHostAudioInputStreamSource()
+            inputAudioDevice.streams = [inputStream]
+
+            let outputAudioDevice = VZVirtioSoundDeviceConfiguration()
+            let outputStream = VZVirtioSoundDeviceOutputStreamConfiguration()
+            outputStream.sink = VZHostAudioOutputStreamSink()
+            outputAudioDevice.streams = [outputStream]
+
+            config.audioDevices = [inputAudioDevice, outputAudioDevice]
+
+            let spiceConsole = VZVirtioConsoleDeviceConfiguration()
+            let spicePort = VZVirtioConsolePortConfiguration()
+            spicePort.name = VZSpiceAgentPortAttachment.spiceAgentPortName
+            spicePort.attachment = VZSpiceAgentPortAttachment()
+            spiceConsole.ports[0] = spicePort
+            config.consoleDevices.append(spiceConsole)
+        }
 
         try config.validate()
         return config

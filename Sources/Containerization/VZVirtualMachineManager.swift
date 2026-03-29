@@ -75,6 +75,9 @@ public struct VZVirtualMachineManager: VirtualMachineManager {
 
                 instanceConfig.mountsByID = vmConfig.mountsByID
                 instanceConfig.hotMountTag = self.hotMountTag
+
+                instanceConfig.gui = vmConfig.gui
+                instanceConfig.guiResolution = vmConfig.guiResolution
             })
     }
 }

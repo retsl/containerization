@@ -48,6 +48,20 @@ public struct BootLog: Sendable {
     }
 }
 
+/// Display resolution for a GUI-enabled VM's Virtio GPU scanout.
+public struct GUIResolution: Sendable, Codable, Equatable {
+    /// Width in pixels.
+    public let width: Int
+    /// Height in pixels.
+    public let height: Int
+
+    public init(width: Int = 1280, height: Int = 720) {
+        precondition(width > 0 && height > 0, "GUIResolution dimensions must be positive (got \(width)×\(height))")
+        self.width = width
+        self.height = height
+    }
+}
+
 /// Protocol for VM creation configuration. Allows VMMs to extend with specific settings
 /// while maintaining a common core configuration.
 public protocol VMCreationConfig: Sendable {
@@ -80,6 +94,11 @@ public struct VMConfiguration: Sendable {
     /// Enable nested virtualization support. If the VirtualMachineManager
     /// does not support this feature, it MUST return an .unsupported ContainerizationError.
     public var nestedVirtualization: Bool
+    /// When true, requests a Virtio GPU, USB input devices, audio, and SPICE
+    /// clipboard from the VirtualMachineManager.
+    public var gui: Bool
+    /// Display resolution for GUI mode.  Ignored when `gui` is false.
+    public var guiResolution: GUIResolution
 
     public init(
         cpus: Int = 4,
@@ -87,7 +106,9 @@ public struct VMConfiguration: Sendable {
         interfaces: [any Interface] = [],
         mountsByID: [String: [Mount]] = [:],
         bootLog: BootLog? = nil,
-        nestedVirtualization: Bool = false
+        nestedVirtualization: Bool = false,
+        gui: Bool = false,
+        guiResolution: GUIResolution = GUIResolution()
     ) {
         self.cpus = cpus
         self.memoryInBytes = memoryInBytes
@@ -95,5 +116,7 @@ public struct VMConfiguration: Sendable {
         self.mountsByID = mountsByID
         self.bootLog = bootLog
         self.nestedVirtualization = nestedVirtualization
+        self.gui = gui
+        self.guiResolution = guiResolution
     }
 }
