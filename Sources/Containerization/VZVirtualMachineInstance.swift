@@ -81,7 +81,10 @@ struct VZVirtualMachineInstance: Sendable {
 
     // `vm` and `hotMountDevice` aren't used concurrently.
     private nonisolated(unsafe) let vm: VZVirtualMachine
-    /// The runtime VZVirtioFileSystemDevice for the hot-mount bus tag, or nil
+
+    /// The underlying `VZVirtualMachine` — exposed for GUI window attachment
+    /// (e.g. assigning to `VZVirtualMachineView.virtualMachine`).
+    public nonisolated var underlying: VZVirtualMachine { vm }    /// The runtime VZVirtioFileSystemDevice for the hot-mount bus tag, or nil
     /// if no hot-mount tag was configured.  Mutate via setHotMountShare(_:) —
     /// VZ requires all device access to go through the VM's dispatch queue.
     private nonisolated(unsafe) let hotMountDevice: VZVirtioFileSystemDevice?
@@ -604,5 +607,7 @@ extension NATInterface: VZInterface {
         return config
     }
 }
+
+extension VZVirtualMachineInstance: VZVirtualMachineProviding {}
 
 #endif
