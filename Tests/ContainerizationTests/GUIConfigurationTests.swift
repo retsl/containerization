@@ -72,17 +72,13 @@ struct VMConfigurationGUITests {
 }
 
 struct GUIDeviceInjectionTests {
-    /// Build a Configuration with `gui: true` and call `toVZ()`.
-    ///
-    /// `toVZ()` will throw because the dummy kernel file is not a valid Mach-O/ELF,
-    /// but VZ validates devices eagerly so we can still verify the configuration
-    /// state by catching the error and inspecting the config built before validate().
-    ///
-    /// Instead, we exercise the code path by building a VZVirtualMachineConfiguration
-    /// directly — mirroring what `toVZ()` does — and verifying the VZ framework
-    /// accepts the GUI devices.
-    @Test func guiDevicesAcceptedByVZ() throws {
-        var config = VZVirtualMachineConfiguration()
+    /// Verify that the device set `toVZ()` now attaches unconditionally — GPU,
+    /// USB keyboard, USB pointing device, audio output, and SPICE console — is
+    /// accepted by the VZ framework.  Audio input is intentionally excluded: it
+    /// requires the `com.apple.security.device.audio-input` entitlement and will
+    /// cause `validate()` to throw on headless boots without it (#146).
+    @Test func unconditionalDevicesAcceptedByVZ() throws {
+        let config = VZVirtualMachineConfiguration()
         config.cpuCount = 2
         config.memorySize = UInt64(1024 * 1024 * 1024)
 
@@ -95,17 +91,11 @@ struct GUIDeviceInjectionTests {
         config.keyboards = [VZUSBKeyboardConfiguration()]
         config.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
 
-        let inputAudioDevice = VZVirtioSoundDeviceConfiguration()
-        let inputStream = VZVirtioSoundDeviceInputStreamConfiguration()
-        inputStream.source = VZHostAudioInputStreamSource()
-        inputAudioDevice.streams = [inputStream]
-
         let outputAudioDevice = VZVirtioSoundDeviceConfiguration()
         let outputStream = VZVirtioSoundDeviceOutputStreamConfiguration()
         outputStream.sink = VZHostAudioOutputStreamSink()
         outputAudioDevice.streams = [outputStream]
-
-        config.audioDevices = [inputAudioDevice, outputAudioDevice]
+        config.audioDevices = [outputAudioDevice]
 
         let spiceConsole = VZVirtioConsoleDeviceConfiguration()
         let spicePort = VZVirtioConsolePortConfiguration()
@@ -117,15 +107,15 @@ struct GUIDeviceInjectionTests {
         #expect(config.graphicsDevices.count == 1)
         #expect(config.keyboards.count == 1)
         #expect(config.pointingDevices.count == 1)
-        #expect(config.audioDevices.count == 2)
+        #expect(config.audioDevices.count == 1)
         #expect(config.consoleDevices.count == 1)
     }
 
-    @Test func headlessConfigHasNoGUIDevices() {
-        var config = VZVirtualMachineConfiguration()
-        config.cpuCount = 2
-        config.memorySize = UInt64(1024 * 1024 * 1024)
-
+    /// A freshly allocated `VZVirtualMachineConfiguration` has no GUI devices by
+    /// default. This is a VZ framework baseline; `toVZ()` always adds the
+    /// unconditional device set on top of this.
+    @Test func vzDefaultConfigurationHasNoGUIDevices() {
+        let config = VZVirtualMachineConfiguration()
         #expect(config.graphicsDevices.isEmpty)
         #expect(config.keyboards.isEmpty)
         #expect(config.pointingDevices.isEmpty)
@@ -133,17 +123,17 @@ struct GUIDeviceInjectionTests {
         #expect(config.consoleDevices.isEmpty)
     }
 
-    @Test func configurationGuiFieldsPropagateToInstance() {
+    /// `gui` on `VZVirtualMachineInstance.Configuration` is a deprecated no-op:
+    /// `toVZ()` no longer reads it. The field is kept for source compatibility
+    /// until its call sites are removed by issue #148.
+    @Test func guiFieldIsDeprecatedNoOp() {
         var instanceConfig = VZVirtualMachineInstance.Configuration()
         #expect(instanceConfig.gui == false)
-        #expect(instanceConfig.guiResolution == GUIResolution())
 
+        // Setting gui has no effect on toVZ() device attachment; the field
+        // exists only to avoid breaking callers until #148 lands.
         instanceConfig.gui = true
-        instanceConfig.guiResolution = GUIResolution(width: 1920, height: 1080)
-
         #expect(instanceConfig.gui == true)
-        #expect(instanceConfig.guiResolution.width == 1920)
-        #expect(instanceConfig.guiResolution.height == 1080)
     }
 
     @Test func managerThreadsGUIFields() throws {

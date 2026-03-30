@@ -61,10 +61,12 @@ struct VZVirtualMachineInstance: Sendable {
         /// tag to the VM.  The share starts empty; callers mutate it at runtime to
         /// add or remove host directories without stopping the VM.
         public var hotMountTag: String? = nil
-        /// When true, attaches a Virtio GPU, USB keyboard, USB pointing device, audio
-        /// I/O devices, and a SPICE clipboard console to the VM.
+        /// Deprecated no-op. GPU, USB input devices, audio output, and SPICE are
+        /// now attached to every VM unconditionally; this field is no longer read
+        /// by `toVZ()`. Kept for source compatibility until the call sites in
+        /// `GUIVMRunner` are deleted by issue #148.
         public var gui: Bool
-        /// Display resolution for the Virtio GPU scanout.  Only used when `gui` is true.
+        /// Display resolution for the Virtio GPU scanout. Defaults to 1280×720.
         public var guiResolution: GUIResolution
 
         init() {
@@ -494,38 +496,42 @@ extension VZVirtualMachineInstance.Configuration {
         platform.isNestedVirtualizationEnabled = self.nestedVirtualization
         config.platform = platform
 
-        if self.gui {
-            let graphics = VZVirtioGraphicsDeviceConfiguration()
-            graphics.scanouts = [
-                VZVirtioGraphicsScanoutConfiguration(
-                    widthInPixels: self.guiResolution.width,
-                    heightInPixels: self.guiResolution.height
-                ),
-            ]
-            config.graphicsDevices = [graphics]
+        // GPU, USB input devices, audio output, and SPICE are attached to every
+        // VM unconditionally: the kernel already has CONFIG_DRM_VIRTIO_GPU=y and
+        // loads the driver silently without a display server; input devices queue
+        // events without a consumer; audio output requires no entitlement and
+        // fails gracefully without a guest sound server; the SPICE port sits idle
+        // without a clipboard manager.
+        //
+        // Audio input (VZHostAudioInputStreamSource) requires the
+        // com.apple.security.device.audio-input entitlement. It is attached lazily
+        // when the window is first shown and the user has granted microphone access
+        // (#146). Attaching it here would cause validate() to throw on every
+        // headless boot once TCC enforces the missing entitlement.
+        let graphics = VZVirtioGraphicsDeviceConfiguration()
+        graphics.scanouts = [
+            VZVirtioGraphicsScanoutConfiguration(
+                widthInPixels: self.guiResolution.width,
+                heightInPixels: self.guiResolution.height
+            ),
+        ]
+        config.graphicsDevices = [graphics]
 
-            config.keyboards = [VZUSBKeyboardConfiguration()]
-            config.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
+        config.keyboards = [VZUSBKeyboardConfiguration()]
+        config.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
 
-            let inputAudioDevice = VZVirtioSoundDeviceConfiguration()
-            let inputStream = VZVirtioSoundDeviceInputStreamConfiguration()
-            inputStream.source = VZHostAudioInputStreamSource()
-            inputAudioDevice.streams = [inputStream]
+        let outputAudioDevice = VZVirtioSoundDeviceConfiguration()
+        let outputStream = VZVirtioSoundDeviceOutputStreamConfiguration()
+        outputStream.sink = VZHostAudioOutputStreamSink()
+        outputAudioDevice.streams = [outputStream]
+        config.audioDevices = [outputAudioDevice]
 
-            let outputAudioDevice = VZVirtioSoundDeviceConfiguration()
-            let outputStream = VZVirtioSoundDeviceOutputStreamConfiguration()
-            outputStream.sink = VZHostAudioOutputStreamSink()
-            outputAudioDevice.streams = [outputStream]
-
-            config.audioDevices = [inputAudioDevice, outputAudioDevice]
-
-            let spiceConsole = VZVirtioConsoleDeviceConfiguration()
-            let spicePort = VZVirtioConsolePortConfiguration()
-            spicePort.name = VZSpiceAgentPortAttachment.spiceAgentPortName
-            spicePort.attachment = VZSpiceAgentPortAttachment()
-            spiceConsole.ports[0] = spicePort
-            config.consoleDevices.append(spiceConsole)
-        }
+        let spiceConsole = VZVirtioConsoleDeviceConfiguration()
+        let spicePort = VZVirtioConsolePortConfiguration()
+        spicePort.name = VZSpiceAgentPortAttachment.spiceAgentPortName
+        spicePort.attachment = VZSpiceAgentPortAttachment()
+        spiceConsole.ports[0] = spicePort
+        config.consoleDevices.append(spiceConsole)
 
         try config.validate()
         return config
